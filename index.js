@@ -16,14 +16,26 @@ app.listen(PORT, () => console.log(`Battlesnake Server listening at http://127.0
 const aStar = require('a-star');
 
 
-function *mapGenerator(mapper, g) {
+function *mapGenerator(g, mapper) {
 	for (const x of g)
 		yield mapper(x);
 }
-function *filterGenerator(filter, g) {
+function *filterGenerator(g, filter) {
 	for (const x of g)
 		if (filter(x))
 			yield x;
+}
+function maxFromGenerator(g, evaluator) {
+	let bestValue = -Infinity;
+	let best;
+	for (const x of g) {
+		const value = evaluator(x);
+		if (value > bestValue) {
+			bestValue = value;
+			best = x;
+		}
+	}
+	return best;
 }
 
 
@@ -89,8 +101,16 @@ class Board {
 			for (let x = 0; x < width; x++) {
 				this.cells[y][x] = new Node(x, y);
 			}
+
+
+		this.food = new Array(response.board.food.length);
+		for (let foodI = 0; foodI < response.board.food.length; foodI++) {
+			const foodResponse = response.board.food[foodI];
+			this.food[foodI] = this.cells[foodResponse.y][foodResponse.x];
+			this.food[foodI].value = -1;
+		}
+
 		this.snakes = [];
-		console.log(response.you)
 		for (let snakeResponse of response.board.snakes) {
 			const snake = new Array(snakeResponse.body.length);
 			this.snakes.push(snake);
@@ -99,17 +119,36 @@ class Board {
 			for (let cellI = 0; cellI < snake.length; cellI++) {
 				const cell = snakeResponse.body[cellI];
 				snake[cellI] = this.cells[cell.y][cell.x];
-				snake[cellI].value = this.snakes.length;
-				snake[cellI].freeIn = Math.max(snake[cellI].freeIn, snakeResponse.body.length - cellI - 1);
+				if (cell < snake.length - 1 || true) {
+					snake[cellI].value = this.snakes.length;
+					snake[cellI].freeIn = Math.max(snake[cellI].freeIn, snakeResponse.body.length - cellI - 1);
+				}
 			}
 		}
-
-		this.food = new Array(response.board.food.length);
-		for (let foodI = 0; foodI < response.board.food.length; foodI++) {
-			const foodResponse = response.board.food[foodI];
-			this.food[foodI] = this.cells[foodResponse.y][foodResponse.x];
-			this.food[foodI].value = -1;
+		for (let snake of this.snakes) {
+			if (snake != this.me && snake.length >= this.me.length)
+				for (let neighbor of this.neighbors(snake[0])) {
+					if (neighbor.freeIn <= 0) {
+						neighbor.value  = snake[0].value;
+						neighbor.freeIn = snake.length;
+					}
+				}
 		}
+	}
+
+	fillCount(node) {
+		// TODO: faster
+		const nodes = [];
+		const unexplored = [node];
+		while (unexplored.length) {
+			const node = unexplored.pop();
+			for (let neighbor of this.neighbors(node))
+				if (neighbor.freeIn <= 0 && nodes.indexOf(neighbor) == -1)
+					unexplored.push(neighbor);
+			nodes.push(node);
+		}
+
+		return nodes.length;
 	}
 
 	height() {
@@ -171,7 +210,7 @@ class Board {
 		const _this = this;
 		return aStar({
 			start: from,
-			neighbors: function *(node, g) { yield* filterGenerator(n => n.value <= 0 || n.freeIn <= g, _this.neighbors(node)); },
+			neighbors: function *(node, g) { yield* filterGenerator(_this.neighbors(node), n => n.value <= 0 || n.freeIn <= g); },
 			isEnd: isEnd,
 			distance: (a, b) => a.distance(b),
 			heuristic: _ => 0,
@@ -186,18 +225,24 @@ function handleMove(request, response) {
 	// board.print();
 
 	// const foodBoard = new Board(board.height(), board.width());
-	// for (let f of board.food) {
+	// for (let f of board.food)
 	// 	foodBoard.getNode(f.x, f.y).value = 1;
-	// } 	
 	// foodBoard.print();
 
-	const searchFill = new Board(board.height(), board.width());
-	const pathResult = board.pathToRequirement(board.me[0], node => { searchFill.getNode(node.x, node.y).value = 1; return node.value == -1});
-	// searchFill.print();
+	const pathResult = board.pathToRequirement(board.me[0], node => node.value == -1);
 
-	if (pathResult.status != 'success')
-		console.warn(pathResult);
-	const move = pathResult.path[0].direction(pathResult.path[1]);
+	let towardsNode;
+	if (pathResult.status == 'success')
+		towardsNode = pathResult.path[1];
+	else {
+		console.warn(pathResult.status);
+		towardsNode = maxFromGenerator(filterGenerator(board.neighbors(board.me[0]), n => n.freeIn <= 0), node => board.fillCount(node));
+		if (towardsNode == undefined) {
+			console.warn("stuck");
+			towardsNode = board.me[1];
+		}
+	}
+	const move = board.me[0].direction(towardsNode);
 	console.log(`MOVE: ${move}`);
 	response.status(200).send({
 		move: move,
@@ -205,6 +250,6 @@ function handleMove(request, response) {
 }
 
 function handleEnd(request, response) {
-	console.log('END')
-	response.status(200).send('ok')
+	console.log('END');
+	response.status(200).send('ok');
 }
