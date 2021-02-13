@@ -43,7 +43,7 @@ function handleIndex(request, response) {
 	let battlesnakeInfo = {
 		apiversion: '1',
 		author: 'L0laapk3',
-		color: "#ffffff",
+		color: '#' + Math.floor(Math.random()*(1<<24)).toString(16),
 		head: 'ski',
 		tail: 'hook'
 	}
@@ -64,6 +64,7 @@ class Node {
 			this.y = x.y;
 			this.value = x.value;
 			this.freeIn = x.freeIn;
+			this.prediction = false;
 		} else {
 			this.x = x;
 			this.y = y;
@@ -120,8 +121,8 @@ class Board {
 				const cell = snakeResponse.body[cellI];
 				snake[cellI] = this.cells[cell.y][cell.x];
 				if (cell < snake.length - 1 || true) {
-					snake[cellI].value = this.snakes.length;
 					snake[cellI].freeIn = Math.max(snake[cellI].freeIn, snakeResponse.body.length - cellI - 1);
+					this.prediction = true;
 				}
 			}
 		}
@@ -129,7 +130,6 @@ class Board {
 			if (snake != this.me && snake.length >= this.me.length)
 				for (let neighbor of this.neighbors(snake[0])) {
 					if (neighbor.freeIn <= 0) {
-						neighbor.value  = snake[0].value;
 						neighbor.freeIn = snake.length;
 					}
 				}
@@ -171,8 +171,8 @@ class Board {
 		while (row >= -1) {
 			for (let c = -1; c <= this.cells[0].length; c++) {
 				const leftRightBorder = c < 0 || c == this.cells[0].length;
-				let bottomCell = row >= 0 && (leftRightBorder || row == 0 || this.cells[row-1][c].value > 0);
-				if (leftRightBorder || row == this.cells.length || row < 0 || this.cells[row][c].value > 0) {
+				let bottomCell = row >= 0 && (leftRightBorder || row == 0 || this.cells[row-1][c].freeIn > 0);
+				if (leftRightBorder || row == this.cells.length || row < 0 || this.cells[row][c].freeIn > 0) {
 					if (bottomCell)
 						s += '█';
 					else
@@ -207,15 +207,52 @@ class Board {
 	}
 
 	pathToRequirement(from, isEnd) {
-		const _this = this;
-		return aStar({
-			start: from,
-			neighbors: function *(node, g) { yield* filterGenerator(_this.neighbors(node), n => n.value <= 0 || n.freeIn <= g); },
-			isEnd: isEnd,
-			distance: (a, b) => a.distance(b),
-			heuristic: _ => 0,
-			hash: node => node.x + "," + node.y,
-		});
+		// const _this = this;
+		// return aStar({
+		// 	start: from,
+		// 	neighbors: function *(node, g) { yield* filterGenerator(_this.neighbors(node), n =>  n.freeIn <= g); },
+		// 	isEnd: isEnd,
+		// 	distance: (a, b) => a.distance(b),
+		// 	heuristic: _ => 0,
+		// 	hash: node => node.x + "," + node.y,
+		// });
+	}
+
+	sssp(from, isEnd) {
+		const reconstructPath = node => {
+			while (node.g > 0) {
+				node = node.parents[0];
+			}
+			return node.node;
+		};
+		let evenNodes = [ { node: from, g: 0, parents: [] } ], oddNodes = [], oddI = 0, cost = 0;
+		while (true) {
+			let i = oddI;
+			if (i >= evenNodes.length)
+				return undefined;
+			oddI = oddNodes.length;
+			for (; i < evenNodes.length; i++) {
+				neighbors:
+				for (const n of this.neighbors(evenNodes[i].node)) {
+					if (isEnd(n))
+						return reconstructPath({ node: n, g: cost, parents: [evenNodes[i]] });
+					// console.log("not end");
+					if (n.freeIn > cost)
+						continue;
+					// console.log("not blocked");
+					for (let otherI = 0; otherI < oddNodes.length; otherI++)
+						if (oddNodes[otherI].node == n) {
+							if (otherI >= oddI)
+								oddNodes[otherI].parents.push(evenNodes[i]);
+							continue neighbors;
+						}
+					// console.log("not existing");
+					oddNodes.push({ node: n, g: cost, parents: [evenNodes[i]] });
+				}
+			}
+			[ evenNodes, oddNodes ] = [ oddNodes, evenNodes ];
+			cost++;
+		}
 	}
 }
 
@@ -229,15 +266,16 @@ function handleMove(request, response) {
 	// 	foodBoard.getNode(f.x, f.y).value = 1;
 	// foodBoard.print();
 
-	const pathResult = board.pathToRequirement(board.me[0], node => node.value == -1);
 
-	let towardsNode;
-	if (pathResult.status == 'success')
-		towardsNode = pathResult.path[1];
-	else {
-		console.warn(pathResult.status);
+	// const fillBoard = new Board(board.height(), board.width());
+	// let towardsNode = board.sssp(board.me[0], node => { fillBoard.getNode(node.x, node.y).freeIn = 1; return node.value == -1; });
+	// fillBoard.print();
+	let towardsNode = board.sssp(board.me[0], node => node.value == -1);
+
+	if (!towardsNode) {
+		console.warn("no path");
 		towardsNode = maxFromGenerator(filterGenerator(board.neighbors(board.me[0]), n => n.freeIn <= 0), node => board.fillCount(node));
-		if (towardsNode == undefined) {
+		if (!towardsNode) {
 			console.warn("stuck");
 			towardsNode = board.me[1];
 		}
