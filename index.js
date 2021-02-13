@@ -234,19 +234,16 @@ class Board {
 			for (; i < evenNodes.length; i++) {
 				neighbors:
 				for (const n of this.neighbors(evenNodes[i].node)) {
-					if (isEnd(n))
-						return reconstructPath({ node: n, g: cost, parents: [evenNodes[i]] });
-					// console.log("not end");
 					if (n.freeIn > cost)
 						continue;
-					// console.log("not blocked");
+					if (isEnd(n))
+						return reconstructPath({ node: n, g: cost, parents: [evenNodes[i]] });
 					for (let otherI = 0; otherI < oddNodes.length; otherI++)
 						if (oddNodes[otherI].node == n) {
 							if (otherI >= oddI)
 								oddNodes[otherI].parents.push(evenNodes[i]);
 							continue neighbors;
 						}
-					// console.log("not existing");
 					oddNodes.push({ node: n, g: cost, parents: [evenNodes[i]] });
 				}
 			}
