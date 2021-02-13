@@ -64,7 +64,7 @@ class Node {
 			this.y = x.y;
 			this.value = x.value;
 			this.freeIn = x.freeIn;
-			this.prediction = false;
+			this.prediction = 0;
 		} else {
 			this.x = x;
 			this.y = y;
@@ -120,19 +120,17 @@ class Board {
 			for (let cellI = 0; cellI < snake.length; cellI++) {
 				const cell = snakeResponse.body[cellI];
 				snake[cellI] = this.cells[cell.y][cell.x];
-				if (cell < snake.length - 1 || true) {
+				if (cell < snake.length - 1 || true)
 					snake[cellI].freeIn = Math.max(snake[cellI].freeIn, snakeResponse.body.length - cellI - 1);
-					this.prediction = true;
-				}
 			}
 		}
 		for (let snake of this.snakes) {
 			if (snake != this.me && snake.length >= this.me.length)
-				for (let neighbor of this.neighbors(snake[0])) {
+				for (let neighbor of this.neighbors(snake[0]))
 					if (neighbor.freeIn <= 0) {
 						neighbor.freeIn = snake.length;
+						neighbor.prediction = 2 + 2 * (snake.length > this.me.length) + (neighbor.value != 0);
 					}
-				}
 		}
 	}
 
@@ -267,16 +265,26 @@ function handleMove(request, response) {
 	// const fillBoard = new Board(board.height(), board.width());
 	// let towardsNode = board.sssp(board.me[0], node => { fillBoard.getNode(node.x, node.y).freeIn = 1; return node.value == -1; });
 	// fillBoard.print();
-	let towardsNode = board.sssp(board.me[0], node => node.value == -1);
-
-	if (!towardsNode) {
-		console.warn("no path");
-		towardsNode = maxFromGenerator(filterGenerator(board.neighbors(board.me[0]), n => n.freeIn <= 0), node => board.fillCount(node));
-		if (!towardsNode) {
+	let towardsNode, predictionLevel = 0;
+	while (true) {
+		towardsNode = board.sssp(board.me[0], node => node.value == -1);
+		if (!towardsNode)
+			towardsNode = maxFromGenerator(filterGenerator(board.neighbors(board.me[0]), n => n.freeIn <= 0), node => board.fillCount(node));
+		if (towardsNode)
+			break;
+		// remove move prediction of equal length first and then larger length snakes, each time first the squares without food and then with food
+		if (predictionLevel++ == 4) {
 			console.warn("stuck");
 			towardsNode = board.me[1];
+			break;
 		}
+		for (const row of board.cells)
+			for (const node of row)
+				if (node.prediction == predictionLevel)
+					node.freeIn = 0;
 	}
+	if (predictionLevel > 0)
+		console.warn(`no path (${predictionLevel})`);
 	const move = board.me[0].direction(towardsNode);
 	console.log(`MOVE: ${move}`);
 	response.status(200).send({
