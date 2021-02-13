@@ -80,9 +80,9 @@ class Node {
 
 class Board {
 	constructor(height, width) {
-		const responseBoard = width ? {snakes: [], food: []} : height;
-		height = width ? height : responseBoard.height;
-		width = width ? width : responseBoard.width;
+		const response = width ? {you: {}, board: {snakes: [], food: []}} : height
+		height = width ? height : response.board.height;
+		width = width ? width : response.board.width;
 
 		this.cells = new Array(height).fill().map(x => new Array(width).fill(0));
 		for (let y = 0; y < height; y++)
@@ -90,20 +90,23 @@ class Board {
 				this.cells[y][x] = new Node(x, y);
 			}
 		this.snakes = [];
-		for (let snakeResponse of responseBoard.snakes) {
+		console.log(response.you)
+		for (let snakeResponse of response.board.snakes) {
 			const snake = new Array(snakeResponse.body.length);
 			this.snakes.push(snake);
+			if (snakeResponse.id == response.you.id)
+				this.me = snake;
 			for (let cellI = 0; cellI < snake.length; cellI++) {
 				const cell = snakeResponse.body[cellI];
 				snake[cellI] = this.cells[cell.y][cell.x];
 				snake[cellI].value = this.snakes.length;
-				snake[cellI].freeIn = snakeResponse.body.length - cellI - 1;
+				snake[cellI].freeIn = Math.max(snake[cellI].freeIn, snakeResponse.body.length - cellI - 1);
 			}
 		}
 
-		this.food = new Array(responseBoard.food.length);
-		for (let foodI = 0; foodI < responseBoard.food.length; foodI++) {
-			const foodResponse = responseBoard.food[foodI];
+		this.food = new Array(response.board.food.length);
+		for (let foodI = 0; foodI < response.board.food.length; foodI++) {
+			const foodResponse = response.board.food[foodI];
 			this.food[foodI] = this.cells[foodResponse.y][foodResponse.x];
 			this.food[foodI].value = -1;
 		}
@@ -179,18 +182,18 @@ class Board {
 
 
 function handleMove(request, response) {
-	const board = new Board(request.body.board);
-	board.print();
+	const board = new Board(request.body);
+	// board.print();
 
-	const foodBoard = new Board(board.height(), board.width());
-	for (let f of board.food) {
-		foodBoard.getNode(f.x, f.y).value = 1;
-	} 	
-	foodBoard.print();
+	// const foodBoard = new Board(board.height(), board.width());
+	// for (let f of board.food) {
+	// 	foodBoard.getNode(f.x, f.y).value = 1;
+	// } 	
+	// foodBoard.print();
 
 	const searchFill = new Board(board.height(), board.width());
-	const pathResult = board.pathToRequirement(board.snakes[0][0], node => { searchFill.getNode(node.x, node.y).value = 1; return node.value == -1});
-	searchFill.print();
+	const pathResult = board.pathToRequirement(board.me[0], node => { searchFill.getNode(node.x, node.y).value = 1; return node.value == -1});
+	// searchFill.print();
 
 	if (pathResult.status != 'success')
 		console.warn(pathResult);
