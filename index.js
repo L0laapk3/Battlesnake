@@ -6,47 +6,202 @@ const PORT = process.env.PORT || 3000
 const app = express()
 app.use(bodyParser.json())
 
-app.get('/', handleIndex)
-app.post('/start', handleStart)
-app.post('/move', handleMove)
-app.post('/end', handleEnd)
+app.get('/', handleIndex);
+app.post('/start', handleStart);
+app.post('/move', handleMove);
+app.post('/end', handleEnd);
 
 app.listen(PORT, () => console.log(`Battlesnake Server listening at http://127.0.0.1:${PORT}`))
 
+const aStar = require('a-star');
+
+
+function *mapGenerator(mapper, g) {
+	for (const x of g)
+		yield mapper(x);
+}
+function *filterGenerator(filter, g) {
+	for (const x of g)
+		if (filter(x))
+			yield x;
+}
+
 
 function handleIndex(request, response) {
-  var battlesnakeInfo = {
-    apiversion: '1',
-    author: '',
-    color: '#888888',
-    head: 'default',
-    tail: 'default'
-  }
-  response.status(200).json(battlesnakeInfo)
+	let battlesnakeInfo = {
+		apiversion: '1',
+		author: 'L0laapk3',
+		color: '#FFA500',
+		head: 'default',
+		tail: 'default'
+	}
+	response.status(200).json(battlesnakeInfo)
 }
 
 function handleStart(request, response) {
-  var gameData = request.body
-
-  console.log('START')
-  response.status(200).send('ok')
+	console.log('START');
+	// response.status(404).send('no');
+	response.status(200).send('ok');
 }
 
+
+class Node {
+	constructor(x, y, value, freeIn) {
+		if (x.x) {
+			this.x = x.x;
+			this.y = x.y;
+			this.value = x.value;
+			this.freeIn = x.freeIn;
+		} else {
+			this.x = x;
+			this.y = y;
+			this.value = value || 0;
+			this.freeIn = freeIn || 0;
+		}
+	}
+	equals(other) {
+		return this.x == other.x && this.y == other.y;
+	}
+	distance(other) {
+		return Math.abs(this.x - other.x) + Math.abs(this.y - other.y);
+	}
+	direction(to) {
+		if (this.distance(to) != 1) {
+			console.error(this, to);
+			throw new Error("bad direction call");
+		}
+
+		if (this.x != to.x)
+			return to.x > this.x ? "right" : "left";
+		if (this.y != to.y)
+			return to.y > this.y ? "up" : "down";
+	}
+}
+
+class Board {
+	constructor(height, width) {
+		const responseBoard = width ? {snakes: [], food: []} : height;
+		height = width ? height : responseBoard.height;
+		width = width ? width : responseBoard.width;
+
+		this.cells = new Array(height).fill().map(x => new Array(width).fill(0));
+		for (let y = 0; y < height; y++)
+			for (let x = 0; x < width; x++) {
+				this.cells[y][x] = new Node(x, y);
+			}
+		this.snakes = [];
+		for (let snakeResponse of responseBoard.snakes) {
+			const snake = new Array(snakeResponse.body.length);
+			this.snakes.push(snake);
+			for (let cellI = 0; cellI < snake.length; cellI++) {
+				const cell = snakeResponse.body[cellI];
+				snake[cellI] = this.cells[cell.y][cell.x];
+				snake[cellI].value = this.snakes.length;
+				snake[cellI].freeIn = snakeResponse.body.length - cellI - 1;
+			}
+		}
+
+		this.food = new Array(responseBoard.food.length);
+		for (let foodI = 0; foodI < responseBoard.food.length; foodI++) {
+			const foodResponse = responseBoard.food[foodI];
+			this.food[foodI] = this.cells[foodResponse.y][foodResponse.x];
+			this.food[foodI].value = -1;
+		}
+	}
+
+	height() {
+		return this.cells.length;
+	}
+	width() {
+		return this.cells[0].length;
+	}
+
+	getNode(x, y) {
+		const node = this.cells[y][x];
+		if (node == undefined)
+			throw new Error(`getNode oob (${x}, ${y})`);
+		return node;
+	}
+
+	print() {
+		let row = this.cells.length;
+		let s = "";
+		while (row >= -1) {
+			for (let c = -1; c <= this.cells[0].length; c++) {
+				const leftRightBorder = c < 0 || c == this.cells[0].length;
+				let bottomCell = row >= 0 && (leftRightBorder || row == 0 || this.cells[row-1][c].value > 0);
+				if (leftRightBorder || row == this.cells.length || row < 0 || this.cells[row][c].value > 0) {
+					if (bottomCell)
+						s += '█';
+					else
+						s += '▀';
+				} else {
+					if (bottomCell)
+						s += '▄';
+					else
+						s += ' ';
+				}
+			}
+			row -= 2;
+			if (row >= -1)
+				s += '\n';
+		}
+		console.log(s);
+	}
+	
+	*neighbors(node) {
+		if (node.x > 0)
+			yield this.getNode(node.x - 1, node.y);
+		if (node.x < this.cells[0].length - 1)
+			yield this.getNode(node.x + 1, node.y);
+		if (node.y > 0)
+			yield this.getNode(node.x, node.y - 1);
+		if (node.y < this.cells.length - 1)
+			yield this.getNode(node.x, node.y + 1);
+	}
+
+	pathToNode(from, to) {
+		return pathToRequirement(from, node => to.equals(node));
+	}
+
+	pathToRequirement(from, isEnd) {
+		const _this = this;
+		return aStar({
+			start: from,
+			neighbors: function *(node, g) { yield* filterGenerator(n => n.value <= 0 || n.freeIn <= g, _this.neighbors(node)); },
+			isEnd: isEnd,
+			distance: (a, b) => a.distance(b),
+			heuristic: _ => 0,
+			hash: node => node.x + "," + node.y,
+		});
+	}
+}
+
+
 function handleMove(request, response) {
-  var gameData = request.body
+	const board = new Board(request.body.board);
+	board.print();
 
-  var possibleMoves = ['up', 'down', 'left', 'right']
-  var move = possibleMoves[Math.floor(Math.random() * possibleMoves.length)]
+	const foodBoard = new Board(board.height(), board.width());
+	for (let f of board.food) {
+		foodBoard.getNode(f.x, f.y).value = 1;
+	} 	
+	foodBoard.print();
 
-  console.log('MOVE: ' + move)
-  response.status(200).send({
-    move: move
-  })
+	const searchFill = new Board(board.height(), board.width());
+	const pathResult = board.pathToRequirement(board.snakes[0][0], node => { searchFill.getNode(node.x, node.y).value = 1; return node.value == -1});
+	searchFill.print();
+
+	if (pathResult.status != 'success')
+		console.warn(pathResult);
+	const move = pathResult.path[0].direction(pathResult.path[1]);
+	console.log(`MOVE: ${move}`);
+	response.status(200).send({
+		move: move,
+	});
 }
 
 function handleEnd(request, response) {
-  var gameData = request.body
-
-  console.log('END')
-  response.status(200).send('ok')
+	console.log('END')
+	response.status(200).send('ok')
 }
