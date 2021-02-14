@@ -200,22 +200,6 @@ class Board {
 			yield this.getNode(node.x, node.y + 1);
 	}
 
-	pathToNode(from, to) {
-		return pathToRequirement(from, node => to.equals(node));
-	}
-
-	pathToRequirement(from, isEnd) {
-		// const _this = this;
-		// return aStar({
-		// 	start: from,
-		// 	neighbors: function *(node, g) { yield* filterGenerator(_this.neighbors(node), n =>  n.freeIn <= g); },
-		// 	isEnd: isEnd,
-		// 	distance: (a, b) => a.distance(b),
-		// 	heuristic: _ => 0,
-		// 	hash: node => node.x + "," + node.y,
-		// });
-	}
-
 	sssp(from, isEnd) {
 		const reconstructPath = node => {
 			while (node.g > 0) {

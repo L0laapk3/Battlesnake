@@ -18,7 +18,6 @@
   },
   "homepage": "https://github.com/BattlesnakeOfficial/starter-snake-node#readme",
   "dependencies": {
-    "a-star": "github:L0laapk3/node-astar#master",
     "express": "^4.17.1"
   }
 }
