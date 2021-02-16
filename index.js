@@ -155,7 +155,7 @@ class Board {
 			while (unexplored.length) {
 				const node = unexplored.pop();
 				for (let neighbor of this.neighbors(node))
-					if (neighbor.freeIn <= g && nodes.indexOf(neighbor) == -1)
+					if (neighbor.freeIn <= g && nodes.indexOf(neighbor) == -1 && nextUnexplored.indexOf(neighbor) == -1)
 						nextUnexplored.push(neighbor);
 				nodes.push(node);
 			}
@@ -273,7 +273,7 @@ function handleMove(request, response) {
 	// fillBoard.print();
 	let towardsNode, predictionLevel = 0;
 	while (true) {
-		towardsNode = board.sssp(board.me[0], (node, g) => node.value == -1 && board.fillCount(node, g) >= board.width() * board.height() * 0.2);
+		towardsNode = board.sssp(board.me[0], (node, g) => node.value == -1 && board.fillCount(node, g - 1) >= board.width() * board.height() * 0.2);
 		if (!towardsNode)
 			towardsNode = maxFromGenerator(filterGenerator(board.neighbors(board.me[0]), n => n.freeIn <= 0), node => board.fillCount(node) * 1E9 + (board.castRay(board.me[0], node) || {freeIn: 1E8}).freeIn);
 		if (towardsNode)
