@@ -267,7 +267,7 @@ function handleMove(request, response) {
 	// fillBoard.print();
 	let towardsNode, predictionLevel = 0;
 	while (true) {
-		towardsNode = board.sssp(board.me[0], node => node.value == -1);
+		towardsNode = board.sssp(board.me[0], node => node.value == -1 && board.fillCount(node) >= board.width() * board.height() * 0.2);
 		if (!towardsNode)
 			towardsNode = maxFromGenerator(filterGenerator(board.neighbors(board.me[0]), n => n.freeIn <= 0), node => board.fillCount(node) * 1E9 + (board.castRay(board.me[0], node) || {freeIn: 1E8}).freeIn);
 		if (towardsNode)
