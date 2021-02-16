@@ -1,5 +1,6 @@
 const bodyParser = require('body-parser')
 const express = require('express')
+const { path } = require('express/lib/application')
 
 const PORT = process.env.PORT || 3000
 
@@ -146,24 +147,24 @@ class Board {
 		return direction;
 	}
 
-	fillCount(node, g) {
+	fillCount(node, g, occupied) {
 		g = g || 0;
 		// TODO: faster
-		const nodes = [];
+		const nodes = occupied ? [...occupied] : [node];
 		let unexplored, nextUnexplored = [node];
 		while (nextUnexplored.length) {
 			unexplored = nextUnexplored;
 			nextUnexplored = [];
 			while (unexplored.length) {
-				const node = unexplored.pop();
-				for (let neighbor of this.neighbors(node))
-					if (neighbor.freeIn <= g && nodes.indexOf(neighbor) == -1 && nextUnexplored.indexOf(neighbor) == -1)
+				const currNode = unexplored.pop();
+				for (let neighbor of this.neighbors(currNode))
+					if (neighbor.freeIn <= g && nodes.indexOf(neighbor) == -1) {
 						nextUnexplored.push(neighbor);
-				nodes.push(node);
+						nodes.push(neighbor);
+					}
 			}
 			g++;
 		}
-
 		return nodes.length;
 	}
 
@@ -226,10 +227,12 @@ class Board {
 
 	sssp(from, isEnd) {
 		const reconstructPath = node => {
+			const path = [node.node];
 			while (node.g > 0) {
 				node = node.parents[0];
+				path.unshift(node.node);
 			}
-			return node.node;
+			return path;
 		};
 		let evenNodes = [ { node: from, g: 0, parents: [] } ], oddNodes = [], oddI = 0, cost = 0;
 		while (true) {
@@ -242,15 +245,23 @@ class Board {
 				for (const neighbor of this.neighbors(evenNodes[i].node)) {
 					if (neighbor.freeIn > cost)
 						continue;
-					if (isEnd(neighbor, cost + 1))
-						return reconstructPath({ node: neighbor, g: cost, parents: [evenNodes[i]] });
+					let newNode = true;
 					for (let otherI = 0; otherI < oddNodes.length; otherI++)
 						if (oddNodes[otherI].node == neighbor) {
-							if (otherI >= oddI)
+							if (otherI >= oddI) // cost is the same as before
 								oddNodes[otherI].parents.push(evenNodes[i]);
-							continue neighbors;
+							newNode = false;
+							break;
 						}
-					oddNodes.push({ node: neighbor, g: cost, parents: [evenNodes[i]] });
+					if (newNode) {
+						const nodeWithCost = { node: neighbor, g: cost, parents: [evenNodes[i]] };
+						const path = reconstructPath(nodeWithCost);
+						const endResult = isEnd(neighbor, cost + 1, path);
+						if (endResult)
+							return path;
+						if (endResult !== false)
+							oddNodes.push(nodeWithCost);
+					}
 				}
 			}
 			[ evenNodes, oddNodes ] = [ oddNodes, evenNodes ];
@@ -275,8 +286,14 @@ function handleMove(request, response) {
 	// fillBoard.print();
 	let towardsNode, predictionLevel = 0;
 	while (true) {
-		towardsNode = board.sssp(board.me[0], (node, g) => node.value == -1 && board.fillCount(node, g - 1) >= 0.2 * board.freeCells + 5);
-		if (!towardsNode)
+		const pathResult = board.sssp(board.me[0], (node, g, path) => {
+			if (node.value != -1)
+				return undefined;
+			return board.fillCount(node, g - 1) >= .35 * board.freeCells + 5;
+		});
+		if (pathResult)
+			towardsNode = pathResult[0];
+		else
 			towardsNode = maxFromGenerator(filterGenerator(board.neighbors(board.me[0]), n => n.freeIn <= 0), node => board.fillCount(node) * 1E9 + (board.castRay(board.me[0], node) || {freeIn: 1E8}).freeIn);
 		if (towardsNode)
 			break;
