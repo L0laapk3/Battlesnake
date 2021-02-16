@@ -128,10 +128,20 @@ class Board {
 			if (snake != this.me && snake.length >= this.me.length)
 				for (let neighbor of this.neighbors(snake[0]))
 					if (neighbor.freeIn <= 0) {
-						neighbor.freeIn = snake.length;
+						neighbor.freeIn = response.game.ruleset == 'constrictor' ? 1E8 : snake.length;
 						neighbor.prediction = 2 + 2 * (snake.length > this.me.length) + (neighbor.value != 0);
 					}
 		}
+	}
+
+	castRay(node, direction) {
+		const x = direction.x - node.x, y = direction.y - node.y;
+		while (direction.freeIn == 0) {
+			direction = this.getNodeOob(direction.x + x, direction.y + y);
+			if (!direction)
+				return undefined;
+		}
+		return direction;
 	}
 
 	fillCount(node) {
@@ -156,8 +166,14 @@ class Board {
 		return this.cells[0].length;
 	}
 
+	getNodeOob(x, y) {
+		if (x >= 0 && x < this.cells[0].length && y >= 0 && y < this.cells.length)
+			return this.cells[y][x];
+		return undefined;
+	}
+
 	getNode(x, y) {
-		const node = this.cells[y][x];
+		const node = this.getNodeOob(x, y);
 		if (node == undefined)
 			throw new Error(`getNode oob (${x}, ${y})`);
 		return node;
@@ -215,18 +231,18 @@ class Board {
 			oddI = oddNodes.length;
 			for (; i < evenNodes.length; i++) {
 				neighbors:
-				for (const n of this.neighbors(evenNodes[i].node)) {
-					if (n.freeIn > cost)
+				for (const neighbor of this.neighbors(evenNodes[i].node)) {
+					if (neighbor.freeIn > cost)
 						continue;
-					if (isEnd(n))
-						return reconstructPath({ node: n, g: cost, parents: [evenNodes[i]] });
+					if (isEnd(neighbor))
+						return reconstructPath({ node: neighbor, g: cost, parents: [evenNodes[i]] });
 					for (let otherI = 0; otherI < oddNodes.length; otherI++)
-						if (oddNodes[otherI].node == n) {
+						if (oddNodes[otherI].node == neighbor) {
 							if (otherI >= oddI)
 								oddNodes[otherI].parents.push(evenNodes[i]);
 							continue neighbors;
 						}
-					oddNodes.push({ node: n, g: cost, parents: [evenNodes[i]] });
+					oddNodes.push({ node: neighbor, g: cost, parents: [evenNodes[i]] });
 				}
 			}
 			[ evenNodes, oddNodes ] = [ oddNodes, evenNodes ];
@@ -253,7 +269,7 @@ function handleMove(request, response) {
 	while (true) {
 		towardsNode = board.sssp(board.me[0], node => node.value == -1);
 		if (!towardsNode)
-			towardsNode = maxFromGenerator(filterGenerator(board.neighbors(board.me[0]), n => n.freeIn <= 0), node => board.fillCount(node));
+			towardsNode = maxFromGenerator(filterGenerator(board.neighbors(board.me[0]), n => n.freeIn <= 0), node => board.fillCount(node) * 1E9 + (board.castRay(board.me[0], node) || {freeIn: 1E8}).freeIn);
 		if (towardsNode)
 			break;
 		// remove move prediction of equal length first and then larger length snakes, each time first the squares without food and then with food
