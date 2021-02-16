@@ -149,7 +149,6 @@ class Board {
 
 	fillCount(node, g, occupied) {
 		g = g || 0;
-		// TODO: faster
 		const nodes = occupied ? [...occupied] : [node];
 		let unexplored, nextUnexplored = [node];
 		while (nextUnexplored.length) {
@@ -157,11 +156,12 @@ class Board {
 			nextUnexplored = [];
 			while (unexplored.length) {
 				const currNode = unexplored.pop();
-				for (let neighbor of this.neighbors(currNode))
-					if (neighbor.freeIn <= g && nodes.indexOf(neighbor) == -1) {
-						nextUnexplored.push(neighbor);
+				for (let neighbor of this.neighbors(currNode)) {
+					if (neighbor.freeIn <= Math.max(0, g) && nodes.indexOf(neighbor) == -1) {
+						(neighbor.value == -1 ? unexplored : nextUnexplored).push(neighbor);
 						nodes.push(neighbor);
 					}
+				}
 			}
 			g++;
 		}
@@ -256,7 +256,7 @@ class Board {
 					if (newNode) {
 						const nodeWithCost = { node: neighbor, g: cost, parents: [evenNodes[i]] };
 						const path = reconstructPath(nodeWithCost);
-						const endResult = isEnd(neighbor, cost + 1, path);
+						const endResult = isEnd(neighbor, cost, path);
 						if (endResult)
 							return path;
 						if (endResult !== false)
@@ -289,12 +289,12 @@ function handleMove(request, response) {
 		const pathResult = board.sssp(board.me[0], (node, g, path) => {
 			if (node.value != -1)
 				return undefined;
-			return board.fillCount(node, g - 1) >= Math.max(board.me.length, .35 * board.freeCells) + 5;
+			return board.fillCount(node, g - 1, path) >= Math.max(board.me.length, .35 * board.freeCells) + 5;
 		});
 		if (pathResult)
 			towardsNode = pathResult[0];
 		else
-			towardsNode = maxFromGenerator(filterGenerator(board.neighbors(board.me[0]), n => n.freeIn <= 0), node => board.fillCount(node) * 1E9 + (board.castRay(board.me[0], node) || {freeIn: 1E8}).freeIn);
+			towardsNode = maxFromGenerator(filterGenerator(board.neighbors(board.me[0]), n => n.freeIn <= 0), node => board.fillCount(node, node.value == -1 ? 0 : 1) * 1E9 + (board.castRay(board.me[0], node) || {freeIn: 1E8}).freeIn);
 		if (towardsNode)
 			break;
 		// remove move prediction of equal length first and then larger length snakes, each time first the squares without food and then with food
