@@ -11,9 +11,7 @@ app.post('/start', handleStart);
 app.post('/move', handleMove);
 app.post('/end', handleEnd);
 
-app.listen(PORT, () => console.log(`Battlesnake Server listening at http://127.0.0.1:${PORT}`))
-
-const aStar = require('a-star');
+app.listen(PORT, () => console.log(`Battlesnake Server listening at http://127.0.0.1:${PORT}`));
 
 
 function *mapGenerator(g, mapper) {
@@ -96,6 +94,7 @@ class Board {
 		const response = width ? {you: {}, board: {snakes: [], food: []}} : height
 		height = width ? height : response.board.height;
 		width = width ? width : response.board.width;
+		this.freeCells = width * height;
 
 		this.cells = new Array(height).fill().map(x => new Array(width).fill(0));
 		for (let y = 0; y < height; y++)
@@ -120,8 +119,11 @@ class Board {
 			for (let cellI = 0; cellI < snake.length; cellI++) {
 				const cell = snakeResponse.body[cellI];
 				snake[cellI] = this.cells[cell.y][cell.x];
-				if (cell < snake.length - 1 || true)
+				if (cellI < snake.length - 1) {
+					if (snake[cellI].freeIn <= 0)
+						this.freeCells--;
 					snake[cellI].freeIn = Math.max(snake[cellI].freeIn, snakeResponse.body.length - cellI - 1);
+				}
 			}
 		}
 		for (let snake of this.snakes) {
@@ -273,7 +275,7 @@ function handleMove(request, response) {
 	// fillBoard.print();
 	let towardsNode, predictionLevel = 0;
 	while (true) {
-		towardsNode = board.sssp(board.me[0], (node, g) => node.value == -1 && board.fillCount(node, g - 1) >= board.width() * board.height() * 0.2);
+		towardsNode = board.sssp(board.me[0], (node, g) => node.value == -1 && board.fillCount(node, g - 1) >= 0.2 * board.freeCells + 5);
 		if (!towardsNode)
 			towardsNode = maxFromGenerator(filterGenerator(board.neighbors(board.me[0]), n => n.freeIn <= 0), node => board.fillCount(node) * 1E9 + (board.castRay(board.me[0], node) || {freeIn: 1E8}).freeIn);
 		if (towardsNode)
