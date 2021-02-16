@@ -289,7 +289,7 @@ function handleMove(request, response) {
 		const pathResult = board.sssp(board.me[0], (node, g, path) => {
 			if (node.value != -1)
 				return undefined;
-			return board.fillCount(node, g - 1) >= .35 * board.freeCells + 5;
+			return board.fillCount(node, g - 1) >= Math.max(board.me.length, .35 * board.freeCells) + 5;
 		});
 		if (pathResult)
 			towardsNode = pathResult[0];
